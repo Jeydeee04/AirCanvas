@@ -1,0 +1,339 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------
+   Fonts — Poppins (UI) + Bebas Neue (display), wired by next/font
+--------------------------------------------------------------- */
+@theme inline {
+  --font-sans: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-bebas), "Arial Narrow", Impact, sans-serif;
+}
+
+/* ---------------------------------------------------------------
+   Warm gallery palette + elevation
+--------------------------------------------------------------- */
+@theme {
+  --color-paper: #f4efe6;
+  --color-paper-deep: #ece5d7;
+  --color-paper-warm: #fbf8f1;
+  --color-ink: #1c1a17;
+  --color-ink-soft: #6b6257;
+  --color-ink-faint: #9a9081;
+  --color-hairline: rgba(28, 26, 23, 0.14);
+  --color-hairline-strong: rgba(28, 26, 23, 0.3);
+
+  --color-terracotta: #c2603c;
+  --color-sage: #7c8b6b;
+  --color-ochre: #d6a04a;
+  --color-slate: #4a6072;
+
+  --shadow-panel: 0 22px 48px -30px rgba(28, 26, 23, 0.6), 0 2px 10px -6px rgba(28, 26, 23, 0.2);
+  --shadow-float: 0 10px 26px -16px rgba(28, 26, 23, 0.5);
+
+  --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    overflow: hidden;
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-weight: 400;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: rgba(194, 96, 60, 0.24);
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-terracotta);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* --- Type roles ------------------------------------------------ */
+  .display {
+    font-family: var(--font-display);
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    line-height: 0.9;
+  }
+
+  .eyebrow {
+    font-weight: 600;
+    font-size: 0.6875rem;
+    line-height: 1;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--color-ink-soft);
+  }
+
+  .telemetry {
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+  }
+
+  /* --- Vellum surfaces ------------------------------------------- */
+  .panel {
+    background: rgba(251, 248, 241, 0.76);
+    backdrop-filter: blur(16px) saturate(1.15);
+    -webkit-backdrop-filter: blur(16px) saturate(1.15);
+    border: 1px solid var(--color-hairline);
+    box-shadow: var(--shadow-panel);
+    border-radius: 8px;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--color-hairline);
+    border-radius: 999px;
+    background: rgba(251, 248, 241, 0.72);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: var(--color-ink-soft);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition:
+      background-color 0.2s var(--ease-out-soft),
+      color 0.2s var(--ease-out-soft),
+      transform 0.2s var(--ease-out-soft),
+      border-color 0.2s var(--ease-out-soft);
+  }
+
+  .chip[data-active="true"] {
+    background: var(--color-ink);
+    border-color: var(--color-ink);
+    color: var(--color-paper-warm);
+    transform: translateY(-2px);
+  }
+
+  /* --- Buttons ---------------------------------------------------- */
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-ink-soft);
+    transition:
+      background-color 0.18s var(--ease-out-soft),
+      color 0.18s var(--ease-out-soft),
+      border-color 0.18s var(--ease-out-soft),
+      transform 0.18s var(--ease-out-soft);
+  }
+
+  .icon-btn:hover {
+    background: rgba(28, 26, 23, 0.07);
+    color: var(--color-ink);
+  }
+
+  .icon-btn:active {
+    transform: translateY(1px);
+  }
+
+  .icon-btn:disabled {
+    opacity: 0.32;
+    pointer-events: none;
+  }
+
+  .icon-btn[data-active="true"] {
+    background: var(--color-ink);
+    border-color: var(--color-ink);
+    color: var(--color-paper-warm);
+  }
+
+  .rail-divider {
+    height: 1px;
+    width: 1.75rem;
+    margin: 0.35rem auto;
+    background: var(--color-hairline);
+  }
+
+  /* --- Swatches ---------------------------------------------------- */
+  .swatch {
+    position: relative;
+    width: 1.375rem;
+    height: 1.375rem;
+    border-radius: 999px;
+    border: 1px solid rgba(28, 26, 23, 0.22);
+    box-shadow: inset 0 0 0 2px rgba(251, 248, 241, 0.95);
+    transition: transform 0.18s var(--ease-out-soft);
+  }
+
+  .swatch:hover {
+    transform: scale(1.14);
+  }
+
+  .swatch[data-active="true"] {
+    transform: scale(1.16);
+    box-shadow:
+      inset 0 0 0 2px rgba(251, 248, 241, 0.95),
+      0 0 0 2px var(--color-ink);
+  }
+
+  /* --- Sliders ------------------------------------------------------ */
+  .range {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 2px;
+    border-radius: 99px;
+    background: var(--color-hairline-strong);
+    outline: none;
+  }
+
+  .range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: var(--color-ink);
+    border: 2px solid var(--color-paper-warm);
+    box-shadow: 0 1px 5px rgba(28, 26, 23, 0.4);
+    cursor: pointer;
+  }
+
+  .range::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: var(--color-ink);
+    border: 2px solid var(--color-paper-warm);
+    box-shadow: 0 1px 5px rgba(28, 26, 23, 0.4);
+    cursor: pointer;
+  }
+
+  /* --- Paper grain -------------------------------------------------- */
+  .grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+    opacity: 0.28;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='160' height='160' filter='url(%23n)' opacity='0.5'/></svg>");
+  }
+
+  /* --- Thin scrollbars inside panels ------------------------------- */
+  .thin-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(28, 26, 23, 0.25) transparent;
+  }
+
+  .thin-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .thin-scroll::-webkit-scrollbar-thumb {
+    background: rgba(28, 26, 23, 0.22);
+    border-radius: 99px;
+  }
+}
+
+/* ---------------------------------------------------------------
+   Motion
+--------------------------------------------------------------- */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.anim-rise {
+  animation: rise-in 0.36s var(--ease-out-soft) both;
+}
+
+.anim-fade {
+  animation: fade-in 0.3s var(--ease-out-soft) both;
+}
+
+.anim-slide-right {
+  animation: slide-in-right 0.3s var(--ease-out-soft) both;
+}
+
+.anim-toast {
+  animation: toast-in 0.26s var(--ease-out-soft) both;
+}
+
+.anim-pulse {
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
