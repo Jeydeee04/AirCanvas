@@ -33,9 +33,9 @@ export function HelpPanel({ open, onClose }: HelpPanelProps) {
         </ul>
 
         <p className="text-[0.7rem] leading-relaxed text-ink-faint">
-          Fist, thumbs up, thumbs down and the “I love you” sign are also
-          recognised by the model — they simply stay idle so your drawing is
-          never interrupted.
+          Thumbs up, thumbs down and the “I love you” sign are also recognised
+          by the model — they simply stay idle so your drawing is never
+          interrupted.
         </p>
 
         <div className="h-px bg-hairline" />

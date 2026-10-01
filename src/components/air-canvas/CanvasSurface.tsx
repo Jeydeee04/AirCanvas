@@ -13,7 +13,7 @@ interface CanvasSurfaceProps {
   color: string;
   brushPx: number;
   drawing: boolean;
-  paused: boolean;
+  zooming: boolean;
 }
 
 const CROP = "absolute h-4 w-4 border-hairline-strong";
@@ -27,7 +27,7 @@ export function CanvasSurface({
   color,
   brushPx,
   drawing,
-  paused,
+  zooming,
 }: CanvasSurfaceProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const drawRef = useRef<HTMLCanvasElement | null>(null);
@@ -57,6 +57,26 @@ export function CanvasSurface({
       observer.disconnect();
       window.removeEventListener("resize", apply);
     };
+  }, [engine]);
+
+  /* --- Ctrl/⌘ + wheel zoom at the pointer (native listener: React's onWheel
+         is passive, so it can't preventDefault the browser's own zoom) --- */
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      const rect = host.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      engine.zoomAt(
+        (e.clientX - rect.left) / rect.width,
+        (e.clientY - rect.top) / rect.height,
+        Math.exp(-e.deltaY * 0.0025),
+      );
+    };
+    host.addEventListener("wheel", onWheel, { passive: false });
+    return () => host.removeEventListener("wheel", onWheel);
   }, [engine]);
 
   const moveCursor = useCallback(
@@ -163,9 +183,9 @@ export function CanvasSurface({
             height: cursorSize,
             // Longhand only — React 19 warns when `border` and `borderColor`
             // (shorthand + longhand) coexist in one style object.
-            borderStyle: paused ? "dashed" : "solid",
-            borderWidth: `${drawing || paused ? 2 : 1.5}px`,
-            borderColor: paused ? "rgba(28,26,23,0.55)" : cursorColor,
+            borderStyle: zooming ? "dashed" : "solid",
+            borderWidth: `${drawing || zooming ? 2 : 1.5}px`,
+            borderColor: zooming ? "rgba(28,26,23,0.55)" : cursorColor,
             background: drawing ? `${cursorColor}26` : "transparent",
             boxShadow: drawing
               ? "0 0 0 1px rgba(255,255,255,0.55), 0 2px 10px -2px rgba(28,26,23,0.4)"

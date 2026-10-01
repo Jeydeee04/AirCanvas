@@ -46,11 +46,18 @@ export const GESTURE_LEGEND = [
     category: "Victory",
   },
   {
-    icon: "pause" as const,
+    icon: "zoom-out" as const,
     gesture: "Open palm",
-    detail: "Face the camera",
-    action: "Pause",
+    detail: "Hold to pull back",
+    action: "Zoom out",
     category: "Open_Palm",
+  },
+  {
+    icon: "zoom-in" as const,
+    gesture: "Closed fist",
+    detail: "Hold to push in",
+    action: "Zoom in",
+    category: "Closed_Fist",
   },
 ];
 
@@ -62,6 +69,8 @@ export const SHORTCUTS: { keys: string; label: string }[] = [
   { keys: "⇧ ⌘ Z", label: "Redo" },
   { keys: "S", label: "Save PNG" },
   { keys: "1 – 6", label: "Swatches" },
+  { keys: "+ / −", label: "Zoom" },
+  { keys: "⌘ scroll", label: "Zoom at cursor" },
   { keys: "Esc", label: "Close panels" },
 ];
 
