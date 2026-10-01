@@ -19,7 +19,7 @@ const bebas = Bebas_Neue({
 export const metadata: Metadata = {
   title: "Air Canvas — A Gesture Drawing Studio",
   description:
-    "A full-screen drawing canvas driven by MediaPipe hand gesture recognition. Pinch to draw, flash a victory to switch tools, open your palm to pause.",
+    "A full-screen drawing canvas driven by MediaPipe hand gesture recognition. Pinch to draw, flash a victory to switch tools, hold a fist to zoom in and an open palm to zoom out.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

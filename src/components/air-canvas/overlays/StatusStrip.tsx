@@ -8,6 +8,7 @@ interface StatusStripProps {
   error: string | null;
   flags: GestureFlags;
   telemetry: GestureTelemetry;
+  zoomPct: number;
   toolLabel: string;
   panel: "settings" | "help" | null;
   onTogglePanel: (panel: "settings" | "help") => void;
@@ -19,6 +20,7 @@ export function StatusStrip({
   error,
   flags,
   telemetry,
+  zoomPct,
   toolLabel,
   panel,
   onTogglePanel,
@@ -31,14 +33,16 @@ export function StatusStrip({
   else if (status === "denied" || status === "error") pill = error ?? "Camera unavailable";
   else if (live) {
     if (flags.drawing) pill = "Pinch · drawing";
-    else if (flags.paused) pill = "Open palm · paused";
+    else if (flags.zooming === "in") pill = "Closed fist · zooming in";
+    else if (flags.zooming === "out") pill = "Open palm · zooming out";
     else if (telemetry.gesture === "Victory") pill = "Victory · release to switch";
     else if (telemetry.gesture) pill = `${telemetry.gesture.replace("_", " ")} · ${toolLabel}`;
     else if (telemetry.handPresent) pill = `Hand tracked · ${toolLabel}`;
     else pill = "Show a hand to the camera";
   }
 
-  const pillActive = flags.drawing || flags.paused || status === "starting";
+  const pillActive =
+    flags.drawing || flags.zooming !== null || status === "starting";
 
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-40 flex items-start justify-between gap-4 px-5 py-4">
@@ -69,6 +73,7 @@ export function StatusStrip({
         {live ? (
           <span className="telemetry hidden text-ink-soft md:inline">
             {telemetry.fps} fps · {telemetry.pinchMm} mm
+            {zoomPct !== 100 ? ` · ${zoomPct}%` : ""}
           </span>
         ) : status === "starting" ? (
           <span className="chip anim-pulse">Connecting</span>

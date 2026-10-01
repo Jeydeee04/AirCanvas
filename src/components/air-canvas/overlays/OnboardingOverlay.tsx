@@ -24,9 +24,9 @@ const STEPS: { n: string; title: string; body: string; icon: IconName }[] = [
   },
   {
     n: "03",
-    title: "Open palm",
-    body: "Show your palm to pause without lifting a stroke.",
-    icon: "pause",
+    title: "Palm & fist",
+    body: "Hold an open palm to zoom out, a closed fist to zoom in.",
+    icon: "zoom-out",
   },
 ];
 

@@ -15,7 +15,9 @@ export type IconName =
   | "camera-off"
   | "draw"
   | "cycle"
-  | "pause";
+  | "pause"
+  | "zoom-in"
+  | "zoom-out";
 
 const PATHS: Record<IconName, JSX.Element> = {
   pen: (
@@ -107,6 +109,20 @@ const PATHS: Record<IconName, JSX.Element> = {
     </>
   ),
   pause: <path d="M9.5 5v14M14.5 5v14" />,
+  "zoom-in": (
+    <>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M11 8.5v5M8.5 11h5" />
+      <path d="m15.8 15.8 4.7 4.7" />
+    </>
+  ),
+  "zoom-out": (
+    <>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M8.5 11h5" />
+      <path d="m15.8 15.8 4.7 4.7" />
+    </>
+  ),
 };
 
 interface IconProps {

@@ -30,6 +30,8 @@ export default function AirCanvasStage() {
     canUndo: false,
     canRedo: false,
   });
+  const [zoomPct, setZoomPct] = useState(100);
+  const zoomPctRef = useRef(100);
 
   /* --------------------------------------------------- app state */
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -56,8 +58,18 @@ export default function AirCanvasStage() {
   /* --------------------------------------------------- engine wiring */
   useEffect(() => {
     engine.setOnChange((state) => setHistory(state));
+    // Whole-percent updates only: continuous zoom re-renders the status strip
+    // once per percent, not once per frame.
+    engine.setOnViewChange((view) => {
+      const pct = Math.round(view.scale * 100);
+      if (pct !== zoomPctRef.current) {
+        zoomPctRef.current = pct;
+        setZoomPct(pct);
+      }
+    });
     return () => {
       engine.setOnChange(null);
+      engine.setOnViewChange(null);
     };
   }, [engine]);
 
@@ -226,6 +238,14 @@ export default function AirCanvasStage() {
         case "c":
           requestClear();
           break;
+        case "+":
+        case "=":
+          engine.zoomAt(0.5, 0.5, 1.2);
+          break;
+        case "-":
+        case "_":
+          engine.zoomAt(0.5, 0.5, 1 / 1.2);
+          break;
         case "?":
           setPanel((p) => (p === "help" ? null : "help"));
           break;
@@ -256,7 +276,7 @@ export default function AirCanvasStage() {
         color={color}
         brushPx={brushPx}
         drawing={flags.drawing}
-        paused={flags.paused}
+        zooming={flags.zooming !== null}
       />
 
       <StatusStrip
@@ -264,6 +284,7 @@ export default function AirCanvasStage() {
         error={error}
         flags={flags}
         telemetry={telemetry}
+        zoomPct={zoomPct}
         toolLabel={activeTool.label}
         panel={panel}
         onTogglePanel={(p) => setPanel((cur) => (cur === p ? null : p))}

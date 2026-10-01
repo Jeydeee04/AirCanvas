@@ -42,6 +42,15 @@ export interface HistoryState {
   canRedo: boolean;
 }
 
+export interface ViewState {
+  /** 1 = unscaled, 0.25 = quarter size, 4 = 4× magnified. */
+  scale: number;
+}
+
+/** Zoom bounds — past these the artwork stops being usable. */
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 4;
+
 const COLORS = {
   paper: "#f4efe6",
   grid: "rgba(28, 26, 23, 0.07)",
@@ -74,11 +83,28 @@ export class DrawingEngine {
   private dpr = 1;
   private nextId = 1;
 
+  /**
+   * View transform: screen = artwork · zoom + t (CSS px). Deliberately kept
+   * out of history — undo/redo operates on the document, never the viewport.
+   */
+  private zoom = 1;
+  private viewTx = 0;
+  private viewTy = 0;
+
   onChange: ((state: HistoryState) => void) | null = null;
+  onViewChange: ((view: ViewState) => void) | null = null;
 
   /** Wired by React through a method call — never assigned as a property. */
   setOnChange(handler: ((state: HistoryState) => void) | null): void {
     this.onChange = handler;
+  }
+
+  setOnViewChange(handler: ((view: ViewState) => void) | null): void {
+    this.onViewChange = handler;
+  }
+
+  getView(): ViewState {
+    return { scale: this.zoom };
   }
 
   /* ---------------------------------------------------- lifecycle */
@@ -101,6 +127,8 @@ export class DrawingEngine {
     this.cssWidth = cssWidth;
     this.cssHeight = cssHeight;
     this.dpr = dpr;
+    // New viewport size may invalidate the translation clamp.
+    this.clampView();
     // Keep a persistent DPR transform so live segments land where redraws do.
     this.ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.redraw();
@@ -128,10 +156,63 @@ export class DrawingEngine {
     this.redraw();
   }
 
+  /* ------------------------------------------------------- view */
+
+  /**
+   * Exponential zoom anchored to a viewport-normalized point: the artwork
+   * under (nx, ny) stays put while the scale changes, so holding a gesture
+   * lets you both magnify and steer toward any part of the drawing.
+   * Returns true when the view actually changed.
+   */
+  zoomAt(nx: number, ny: number, factor: number): boolean {
+    if (this.cssWidth < 2 || this.cssHeight < 2) return false;
+    const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, this.zoom * factor));
+    const f = next / this.zoom;
+    if (f === 1) return false;
+
+    // Zooming invalidates an in-progress stroke: its remaining points would
+    // be mapped through a different transform and the curve would jump.
+    if (this.active || this.erasing) this.endStroke();
+
+    const qx = nx * this.cssWidth;
+    const qy = ny * this.cssHeight;
+    this.viewTx = qx - (qx - this.viewTx) * f;
+    this.viewTy = qy - (qy - this.viewTy) * f;
+    this.zoom = next;
+    this.clampView();
+    this.redraw();
+    this.onViewChange?.({ scale: this.zoom });
+    return true;
+  }
+
+  /**
+   * Keeps the artwork reachable: fully covering the viewport when zoomed in,
+   * fully inside it when zoomed out — so a string of anchored zooms can never
+   * push the drawing off screen.
+   */
+  private clampView(): void {
+    const clampAxis = (t: number, view: number) => {
+      const edge = view - view * this.zoom;
+      return Math.min(Math.max(t, Math.min(0, edge)), Math.max(0, edge));
+    };
+    this.viewTx = clampAxis(this.viewTx, this.cssWidth);
+    this.viewTy = clampAxis(this.viewTy, this.cssHeight);
+  }
+
+  /** Viewport-normalized (0..1) → artwork-normalized (0..1). */
+  private viewToArt(nx: number, ny: number): Point {
+    return {
+      x: (nx - this.viewTx / this.cssWidth) / this.zoom,
+      y: (ny - this.viewTy / this.cssHeight) / this.zoom,
+    };
+  }
+
   /* ---------------------------------------------------- strokes */
 
   beginStroke(x: number, y: number): void {
     if (!this.ctx) return;
+    // Input arrives in viewport space; only artwork space gets stored.
+    const p = this.viewToArt(x, y);
 
     if (this.tool === "eraser") {
       if (this.active) this.endStroke();
@@ -139,8 +220,8 @@ export class DrawingEngine {
         this.erasing = true;
         this.sessionBefore = [...this.strokes];
       }
-      this.lastErase = { x, y };
-      this.eraseAt(x, y);
+      this.lastErase = p;
+      this.eraseAt(p.x, p.y);
       return;
     }
 
@@ -151,7 +232,7 @@ export class DrawingEngine {
       tool: this.tool,
       color: this.color,
       size: this.sizePx / this.cssWidth,
-      points: [{ x, y }],
+      points: [p],
     };
     this.strokes.push(stroke);
     this.active = stroke;
@@ -161,22 +242,23 @@ export class DrawingEngine {
 
   addPoint(x: number, y: number): void {
     if (!this.ctx) return;
+    const p = this.viewToArt(x, y);
 
     if (this.erasing) {
       // Sweep the whole path since the last sample — one frame of a fast hand
       // can travel many eraser-widths, and we must not leave stripes.
       const from = this.lastErase;
-      if (from) this.eraseBetween(from, { x, y });
-      else this.eraseAt(x, y);
-      this.lastErase = { x, y };
+      if (from) this.eraseBetween(from, p);
+      else this.eraseAt(p.x, p.y);
+      this.lastErase = p;
       return;
     }
 
     const stroke = this.active;
     if (!stroke) return;
     const prev = stroke.points[stroke.points.length - 1];
-    stroke.points.push({ x, y });
-    this.drawSegment(stroke, prev, { x, y });
+    stroke.points.push(p);
+    this.drawSegment(stroke, prev, p);
   }
 
   endStroke(): void {
@@ -272,7 +354,20 @@ export class DrawingEngine {
     const name =
       filename ??
       `air-canvas-${new Date().toISOString().slice(0, 10)}.png`;
+
+    // Export the whole artwork, not the zoomed viewport: render at 1× first,
+    // then restore the view once the bitmap has been snapshotted.
+    const view = { zoom: this.zoom, tx: this.viewTx, ty: this.viewTy };
+    this.zoom = 1;
+    this.viewTx = 0;
+    this.viewTy = 0;
+    this.redraw();
+
     this.canvas.toBlob((blob) => {
+      this.zoom = view.zoom;
+      this.viewTx = view.tx;
+      this.viewTy = view.ty;
+      this.redraw();
       if (!blob) return;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -317,7 +412,10 @@ export class DrawingEngine {
   private eraseBetween(from: Point, to: Point): void {
     const dx = (to.x - from.x) * this.cssWidth;
     const dy = (to.y - from.y) * this.cssHeight;
-    const step = Math.max(6, this.eraserRadius() * 0.6);
+    // Sampling step in artwork px — the radius is screen-constant, so it
+    // shrinks in artwork space as you zoom in.
+    const r = this.eraserRadius() / this.zoom;
+    const step = Math.max(1, r * 0.6);
     const steps = Math.max(1, Math.min(48, Math.ceil(Math.hypot(dx, dy) / step)));
 
     let changed = false;
@@ -335,24 +433,93 @@ export class DrawingEngine {
   }
 
   /**
-   * Nibbling eraser: removes only the points inside the eraser disc and
-   * splits each stroke at the cut, leaving untouched parts intact.
+   * Squared distance from C to the segment A→B — the projection onto the
+   * infinite line is clamped to [0,1], so this is the true closest distance
+   * along the drawn segment, not just to its endpoints. A single midpoint
+   * test can miss a long line clipped off-centre; this never does.
+   */
+  private distToSegment2(
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+    cx: number,
+    cy: number,
+  ): number {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    const t =
+      len2 > 0
+        ? Math.min(1, Math.max(0, ((cx - ax) * dx + (cy - ay) * dy) / len2))
+        : 0;
+    const ex = ax + dx * t - cx;
+    const ey = ay + dy * t - cy;
+    return ex * ex + ey * ey;
+  }
+
+  /**
+   * Parameter interval [t0, t1] ⊆ [0, 1] where the segment A→B lies inside
+   * the disc (center C, radius r) — solves |A + t(B−A) − C|² = r² and clamps
+   * the roots to the segment. Returns null when no piece of the segment is
+   * inside: callers gate with distToSegment2 first, so null here means a
+   * degenerate (zero-length) segment or an exact tangent graze.
+   */
+  private getCircleIntersection(
+    a: Point,
+    b: Point,
+    cx: number,
+    cy: number,
+    r: number,
+  ): { t0: number; t1: number } | null {
+    const ax = a.x * this.cssWidth;
+    const ay = a.y * this.cssHeight;
+    const bx = b.x * this.cssWidth;
+    const by = b.y * this.cssHeight;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const qa = dx * dx + dy * dy;
+    if (qa === 0) return null;
+    const fx = ax - cx;
+    const fy = ay - cy;
+    const qb = 2 * (fx * dx + fy * dy);
+    const qc = fx * fx + fy * fy - r * r;
+    const disc = qb * qb - 4 * qa * qc;
+    if (disc <= 0) return null;
+    const sq = Math.sqrt(disc);
+    const t0 = Math.min(1, Math.max(0, (-qb - sq) / (2 * qa)));
+    const t1 = Math.min(1, Math.max(0, (-qb + sq) / (2 * qa)));
+    return t1 > t0 ? { t0, t1 } : null;
+  }
+
+  /**
+   * Nibbling eraser: cuts each stroke exactly where its centerline meets the
+   * eraser disc — both cut ends land on the circle perimeter, so a long
+   * sparse segment loses only the touched span instead of snapping back to
+   * the neighbouring raw sample and taking a large chunk with it.
    *
    * The disc is widened by each stroke's own half-width (marker lines are
    * 2.6× the brush), so one pass clears a line completely — including its
-   * round caps — instead of leaving edge residue. One-point fragments are
-   * debris between two cuts and are dropped.
+   * round caps — instead of leaving edge residue. Untouched strokes keep
+   * their identity (same object, same id); one-point fragments are debris
+   * between two cuts and are dropped.
    */
   private applyErase(x: number, y: number): boolean {
     const px = x * this.cssWidth;
     const py = y * this.cssHeight;
-    const base = this.eraserRadius();
+    // The disc keeps a constant size on screen, so it shrinks in artwork
+    // space as the view zooms in — everything below is artwork px.
+    const base = this.eraserRadius() / this.zoom;
 
     const dist2 = (p: Point) => {
       const dx = p.x * this.cssWidth - px;
       const dy = p.y * this.cssHeight - py;
       return dx * dx + dy * dy;
     };
+    const at = (a: Point, b: Point, t: number): Point => ({
+      x: a.x + (b.x - a.x) * t,
+      y: a.y + (b.y - a.y) * t,
+    });
 
     let changed = false;
     const survivors: Stroke[] = [];
@@ -388,24 +555,42 @@ export class DrawingEngine {
       };
 
       for (const p of points) {
-        const hit = dist2(p) <= r2;
+        const from = prev;
 
-        // Sparse samples: also test the midpoint so the eraser can't slip
-        // through a long segment.
-        let midHit = false;
-        if (prev && !hit) {
-          midHit =
-            dist2({ x: (prev.x + p.x) / 2, y: (prev.y + p.y) / 2 }) <= r2;
+        // Gate by true segment distance: endpoints alone can't see a long
+        // line clipped mid-span, and the old single-midpoint test both
+        // missed off-centre crossings and deleted whole segments on a hit.
+        let cut: { t0: number; t1: number } | null = null;
+        if (from) {
+          const d2 = this.distToSegment2(
+            from.x * this.cssWidth,
+            from.y * this.cssHeight,
+            p.x * this.cssWidth,
+            p.y * this.cssHeight,
+            px,
+            py,
+          );
+          if (d2 <= r2) cut = this.getCircleIntersection(from, p, px, py, r);
         }
 
-        if (hit) {
+        if (from && cut) {
+          touched = true;
+          // Stop the surviving line exactly where it meets the disc …
+          if (cut.t0 > 0) run.push(at(from, p, cut.t0));
+          // … and finish the fragment. closeRun() keeps `from` when it lies
+          // on the perimeter (t0 === 0 with `from` already kept); when
+          // `from` was swallowed by the disc, run is empty and this is a
+          // no-op.
+          closeRun();
+          // Resume at the perimeter on the far side and keep p — it lies
+          // beyond the exit, so it's outside the disc. t1 === 1 means p
+          // itself is on/inside the disc, so nothing of it survives.
+          run = cut.t1 < 1 ? [at(from, p, cut.t1), p] : [];
+        } else if (dist2(p) <= r2) {
+          // First point of the stroke (or a degenerate segment) inside the
+          // disc — none of it survives.
           touched = true;
           closeRun();
-        } else if (midHit) {
-          // Cut between prev (already kept) and this point.
-          touched = true;
-          closeRun();
-          run = [p];
         } else {
           run.push(p);
         }
@@ -423,7 +608,15 @@ export class DrawingEngine {
       for (const segment of segments) {
         // One-point fragments are dots of debris, never useful line.
         if (segment.length >= 2) {
-          survivors.push({ ...stroke, id: this.nextId++, points: segment });
+          survivors.push({
+            ...stroke,
+            id: this.nextId++,
+            points: segment,
+            // The spread copies the whole-stroke bbox — drop it so the
+            // fragment recomputes its own (it's smaller, so the cheap
+            // reject stays tight).
+            bbox: undefined,
+          });
         }
       }
     }
@@ -480,6 +673,13 @@ export class DrawingEngine {
     const ctx = this.ctx;
     if (!ctx) return;
 
+    // Rebase the transform on every call: resize() owns the DPR scale and
+    // zoomAt() owns the view — live segments must land where redraws do.
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.translate(this.viewTx, this.viewTy);
+    ctx.scale(this.zoom, this.zoom);
+
     this.styleFor(stroke);
     ctx.beginPath();
     ctx.moveTo(from.x * this.cssWidth, from.y * this.cssHeight);
@@ -499,6 +699,7 @@ export class DrawingEngine {
       ctx.stroke();
     }
     this.resetStyle();
+    ctx.restore();
   }
 
   private drawBackground(ctx: CanvasRenderingContext2D): void {
@@ -540,7 +741,11 @@ export class DrawingEngine {
 
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    // The paper stays pinned to the viewport; only the ink zooms — zooming
+    // out never reveals an edge behind the background.
     this.drawBackground(ctx);
+    ctx.translate(this.viewTx, this.viewTy);
+    ctx.scale(this.zoom, this.zoom);
 
     for (const stroke of this.strokes) {
       const points = stroke.points;

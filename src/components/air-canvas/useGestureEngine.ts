@@ -20,7 +20,8 @@ export interface GestureSettings {
 
 export interface GestureFlags {
   drawing: boolean;
-  paused: boolean;
+  /** Which zoom gesture is currently held, if any. */
+  zooming: "in" | "out" | null;
 }
 
 export interface GestureTelemetry {
@@ -40,7 +41,10 @@ export const DEFAULT_SETTINGS: GestureSettings = {
 };
 
 const MAX_ANGLE = 80; // deg — forgiving finger orientation
-const PALM_HOLD_MS = 250;
+/** A zoom gesture must persist this long — classifier-flicker insurance. */
+const ZOOM_HOLD_MS = 250;
+/** Exponential zoom speed: e^0.6 ≈ 1.8× per second of held gesture. */
+const ZOOM_RATE = 0.6;
 const VICTORY_HOLD_MS = 500;
 const TELEMETRY_INTERVAL = 200;
 
@@ -85,7 +89,7 @@ export function useGestureEngine({
   const [error, setError] = useState<string | null>(null);
   const [flags, setFlags] = useState<GestureFlags>({
     drawing: false,
-    paused: false,
+    zooming: null,
   });
   const [telemetry, setTelemetry] = useState<GestureTelemetry>({
     gesture: null,
@@ -113,8 +117,9 @@ export function useGestureEngine({
   // Live drawing / gesture state (never re-rendered per frame).
   const smoothedRef = useRef<{ x: number; y: number } | null>(null);
   const drawingRef = useRef(false);
-  const pausedRef = useRef(false);
+  const zoomingRef = useRef<"in" | "out" | null>(null);
   const palmHoldRef = useRef(0);
+  const fistHoldRef = useRef(0);
   const victoryHoldRef = useRef(0);
   const victoryLockRef = useRef(false);
   const lastVideoTimeRef = useRef(-1);
@@ -234,15 +239,16 @@ export function useGestureEngine({
 
   const resetTransient = useCallback(() => {
     drawingRef.current = false;
-    pausedRef.current = false;
+    zoomingRef.current = null;
     palmHoldRef.current = 0;
+    fistHoldRef.current = 0;
     victoryHoldRef.current = 0;
     victoryLockRef.current = false;
     smoothedRef.current = null;
     telemetryRef.current = { ...telemetryRef.current, gesture: null, score: 0, handPresent: false, fps: 0 };
     hideCursor();
     clearOverlays();
-    setFlags({ drawing: false, paused: false });
+    setFlags({ drawing: false, zooming: null });
     flushTelemetry(true);
   }, [clearOverlays, flushTelemetry, hideCursor]);
 
@@ -297,12 +303,13 @@ export function useGestureEngine({
         drawingRef.current = false;
         setFlags((f) => (f.drawing ? { ...f, drawing: false } : f));
       }
-      if (pausedRef.current) {
-        pausedRef.current = false;
-        setFlags((f) => (f.paused ? { ...f, paused: false } : f));
+      if (zoomingRef.current !== null) {
+        zoomingRef.current = null;
+        setFlags((f) => (f.zooming !== null ? { ...f, zooming: null } : f));
       }
       smoothedRef.current = null;
       palmHoldRef.current = 0;
+      fistHoldRef.current = 0;
       victoryHoldRef.current = 0;
       victoryLockRef.current = false;
       hideCursor();
@@ -370,21 +377,39 @@ export function useGestureEngine({
       (Math.acos(Math.min(1, Math.max(-1, dot / (mag1 * mag2 || 1)))) * 180) /
       Math.PI;
 
-    /* --- open-palm pause (hysteresis) --- */
+    /* --- palm/fist → continuous zoom (hold-hysteresis, anchored at cursor) --- */
     const isPalm = gestureName === "Open_Palm";
+    const isFist = gestureName === "Closed_Fist";
     palmHoldRef.current = Math.min(
       600,
       Math.max(0, palmHoldRef.current + (isPalm ? dt : -dt * 1.8)),
     );
-    const nowPaused = palmHoldRef.current >= PALM_HOLD_MS;
-    if (nowPaused !== pausedRef.current) {
-      pausedRef.current = nowPaused;
-      setFlags((f) => (f.paused === nowPaused ? f : { ...f, paused: nowPaused }));
+    fistHoldRef.current = Math.min(
+      600,
+      Math.max(0, fistHoldRef.current + (isFist ? dt : -dt * 1.8)),
+    );
+    const zooming: "in" | "out" | null =
+      fistHoldRef.current >= ZOOM_HOLD_MS
+        ? "in"
+        : palmHoldRef.current >= ZOOM_HOLD_MS
+          ? "out"
+          : null;
+    if (zooming !== zoomingRef.current) {
+      zoomingRef.current = zooming;
+      setFlags((f) => ({ ...f, zooming }));
+    }
+    if (zooming) {
+      const factor = Math.exp(ZOOM_RATE * (dt / 1000));
+      engine.zoomAt(cursorX, cursorY, zooming === "in" ? factor : 1 / factor);
     }
 
-    /* --- draw / stop drawing --- */
+    /* --- draw / stop drawing ---
+       A recognized zoom gesture blocks input outright: a closed fist also
+       satisfies the pinch geometry (thumb tucked to index), and an engaged
+       zoom keeps blocking through brief classifier flickers. */
+    const zoomBlocked = isPalm || isFist || zooming !== null;
     if (drawingRef.current) {
-      if (nowPaused) {
+      if (zoomBlocked) {
         engine.endStroke();
         drawingRef.current = false;
         setFlags((f) => (f.drawing ? { ...f, drawing: false } : f));
@@ -395,7 +420,7 @@ export function useGestureEngine({
         drawingRef.current = false;
         setFlags((f) => (f.drawing ? { ...f, drawing: false } : f));
       }
-    } else if (!nowPaused) {
+    } else if (!zoomBlocked) {
       const shouldStart = distMm < pinchEnterMm && angleDeg < MAX_ANGLE;
       if (shouldStart) {
         engine.beginStroke(cursorX, cursorY);

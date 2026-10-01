@@ -12,7 +12,8 @@ interface GestureLegendProps {
 export function GestureLegend({ flags, telemetry }: GestureLegendProps) {
   const isActive = (category: string | null): boolean => {
     if (category === null) return flags.drawing;
-    if (category === "Open_Palm") return flags.paused;
+    if (category === "Open_Palm") return flags.zooming === "out";
+    if (category === "Closed_Fist") return flags.zooming === "in";
     return telemetry.gesture === category;
   };
 
